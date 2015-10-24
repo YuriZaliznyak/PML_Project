@@ -1,0 +1,83 @@
+---
+title: "JHU Practical Machine Learning by Coursera"
+output: html_document
+---
+## Background and motivation
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+## Data 
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+## Load the data, clean the data and prepare subsets for learning
+Load libraries and set random seed for reproducibilityAs it is evident from the outputs, the accuracy of decision tree prediction algorithm is 0.554 (out-of-sample error is 0.446), while for random forest algorithm the accuracy is much higher, namely it is 0.9785 (corresponding out-of-sample error is 0.0215)
+
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+set.seed(2015)
+library(caret) 
+library(randomForest)
+```
+
+Reading training and test sets into local variables and check column names 
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+TrainSet <- read.csv("pml-training.csv", na.strings = c("NA","#DIV/0!"))
+TestSet  <- read.csv("pml-testing.csv",  na.strings = c("NA","#DIV/0!"))
+head(colnames(TrainSet), 20)
+```
+It is seen that first seven columns of training dataset have no connection to the movements and thus are to be excluded from further consideration
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+TrainSet <- TrainSet[, -c(1:7)]
+TestSet  <- TestSet[, -c(1:7)]
+```
+Columns containing too many near zero values may spoil our predictions, thus it would be wise to remove these before implementing any prediction algorithms. The same holds for columns containing >80% of NA's.
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+NearZeroColumns <- nearZeroVar(TrainSet, saveMetrics = TRUE)$nzv
+NumVariables <- dim(TrainSet)[1]
+NumObservations <- dim(TrainSet)[2]
+for (iloop in 1:NumObservations){
+  if (sum(is.na(TrainSet[, iloop]))/NumVariables > 0.8)
+    NearZeroColumns[iloop] <- TRUE
+  }
+TrainSet <- TrainSet[, NearZeroColumns == FALSE]
+TestSet  <- TestSet[, NearZeroColumns == FALSE]
+```
+
+Training data set is then divided into two parts, first one for training (75%), and the second -- for cross-validation (25%).
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+indexarr <- createDataPartition(y = TrainSet$classe, p=0.75, list=FALSE)
+Train    <- TrainSet[indexarr, ]
+Validate <- TrainSet[-indexarr, ] 
+```
+## Prediction 1: decision trees
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+DecisionTreeModel <- train(classe ~ ., method = "rpart", data = Train)
+DecisionTreePrediction <- confusionMatrix(predict(DecisionTreeModel, Validate), Validate$classe)
+DecisionTreePrediction 
+```
+
+## Prediction 2: random forest
+My laptop has insufficient power to run random forest algorithm on the complete train dataset. To make random forest prediction I decided to interchange Train and Validate datasets, namely, to build a model on validation set and then test in on training set.
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+RandomForestModel      <- randomForest(classe ~. , data = Validate, method = "class")
+RandomForestPrediction <- predict(RandomForestModel, Train, type = "class")
+confusionMatrix(RandomForestPrediction, Train$classe) 
+```
+
+## Accuracy comparison
+As it is evident from the outputs, the accuracy of decision tree prediction algorithm is 0.493 (out-of-sample error is 0.507), while for random forest algorithm the accuracy is much higher, namely it is 0.983 (corresponding out-of-sample error is 0.017).
+
+## Predicting on test set
+Random forest algorithm shows the best accuracy and thus it is applied to predict "classe" variable of test dataset, its prediction is listed below:
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+PredictionOnTestSet <- predict(RandomForestModel, TestSet) 
+PredictionOnTestSet
+```
